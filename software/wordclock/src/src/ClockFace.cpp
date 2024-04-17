@@ -562,16 +562,17 @@ bool EnglishClockFace::stateForTime(int hour, int minute, int second, bool show_
 // Custom Dutch face. Letters in lowercase below are not used
 // by the clock.
 
-// HETkISaVIJF
-// TIENatxVOOR
-// OVERmeKWART
-// HALFspmOVER
-// VOORthgEENs
-// TWEEamcDRIE
-// VIERVIJFZES
-// ZEVENoNEGEN
-// ACHTTIENELF
-// TWAALFpmUUR
+// H E T o I S w T I E N
+// V I J F d K W A R T z
+// s O V E R u V O O R a
+// H A L F B E D D R I E
+// V I E R o p t i j d u
+// f T W E E b A C H T y
+// p Z E V E N g V I J F
+// z N E G E N s E E N k
+// T I E N g T W A A L F
+// E L F a Z E S g U U R
+
 //
 
 // All the segments of words on the board. The first too numbers are the
@@ -580,29 +581,31 @@ bool EnglishClockFace::stateForTime(int hour, int minute, int second, bool show_
 #define NL_S_HET 0, 0, 3
 #define NL_S_IS 4, 0, 2
 
-#define NL_H_EEN 7, 4, 3
-#define NL_H_TWEE 0, 5, 4
-#define NL_H_DRIE 7, 5, 4
-#define NL_H_VIER 0, 6, 4
-#define NL_H_VIJF 4, 6, 4
-#define NL_H_ZES 8, 6, 3
-#define NL_H_ZEVEN 0, 7, 5
-#define NL_H_ACHT 0, 8, 4
-#define NL_H_NEGEN 6, 7, 5
-#define NL_H_TIEN 4, 8, 4
-#define NL_H_ELF 8, 8, 3
-#define NL_H_TWAALF 0, 9, 6
+#define NL_M_VIJF 0, 1, 4
+#define NL_M_TIEN 8, 0, 4
+#define NL_M_KWART 5, 1, 5
+
+#define NL_M_OVER 1, 2, 4
+#define NL_M_VOOR 6, 2, 4
+
+#define NL_M_HALF 0, 3, 4
+
+#define NL_H_EEN 7, 7, 3
+#define NL_H_TWEE 1, 5, 4
+#define NL_H_DRIE 7, 3, 4
+#define NL_H_VIER 0, 4, 4
+#define NL_H_VIJF 7, 6, 4
+#define NL_H_ZES 4, 9, 3
+#define NL_H_ZEVEN 1, 6, 5
+#define NL_H_ACHT 6, 5, 4
+#define NL_H_NEGEN 1, 7, 5
+#define NL_H_TIEN 0, 8, 4
+#define NL_H_ELF 0, 9, 3
+#define NL_H_TWAALF 5, 8, 6
 
 #define NL_H_UUR 8, 9, 3
-
-#define NL_M_VOOR 7, 1, 4
-#define NL_M_VOOR2 0, 4, 4
-#define NL_M_OVER 0, 2, 4
-#define NL_M_OVER2 7, 3, 4
-#define NL_M_KWART 6, 2, 5
-#define NL_M_TIEN 0, 1, 4
-#define NL_M_VIJF 7, 0, 4
-#define NL_M_HALF 0, 3, 4
+#define NL_M_BED 5, 3, 3
+#define NL_M_TIJD 6, 4, 4
 
 bool DutchClockFace::stateForTime(int hour, int minute, int second,
                                   bool show_ampm)
@@ -697,7 +700,7 @@ bool DutchClockFace::stateForTime(int hour, int minute, int second,
     break;
   case 15:
     updateSegment(NL_M_KWART);
-    updateSegment(NL_M_OVER2);
+    updateSegment(NL_M_OVER);
     break;
   case 20:
     updateSegment(NL_M_TIEN);
@@ -724,15 +727,15 @@ bool DutchClockFace::stateForTime(int hour, int minute, int second,
     break;
   case 45:
     updateSegment(NL_M_KWART);
-    updateSegment(NL_M_VOOR2);
+    updateSegment(NL_M_VOOR);
     break;
   case 50:
-    updateSegment(NL_M_VOOR);
     updateSegment(NL_M_TIEN);
+    updateSegment(NL_M_VOOR);
     break;
   case 55:
-    updateSegment(NL_M_VOOR);
     updateSegment(NL_M_VIJF);
+    updateSegment(NL_M_VOOR);
     break;
   default:
     DLOG("Invalid minute ");
