@@ -582,7 +582,7 @@ bool EnglishClockFace::stateForTime(int hour, int minute, int second, bool show_
 #define NL_S_IS 4, 0, 2
 
 #define NL_M_VIJF 0, 1, 4
-#define NL_M_TIEN 8, 0, 4
+#define NL_M_TIEN 7, 0, 4
 #define NL_M_KWART 5, 1, 5
 
 #define NL_M_OVER 1, 2, 4
