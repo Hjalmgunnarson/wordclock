@@ -11,7 +11,7 @@ For detailed usage instructions, please refer to the [User's Manual](UsersManual
 - Can use network time (NTP) or manual setting
 - Interface offers various other options such as display color, light sensor sensitivity, and [OTA firmware update](#ota-update)
 - [MQTT client](UsersManual.md#mqtt-client) to control the clock via home automation platforms such as [Home Assistant](https://www.home-assistant.io/)
-- Go beyond time display with an experimental web interface for real-time [painting](UsersManual.md#paint)
+- Go beyond time display with [text scrolling](UsersManual.md#text-scroller) and an experimental web interface for real-time [painting](UsersManual.md#paint)
 
 
 ## Demo video
@@ -20,7 +20,21 @@ For detailed usage instructions, please refer to the [User's Manual](UsersManual
 
 ## Release binaries
 
-If you are not interested in modifying the source code, you can find prebuilt binaries [here](https://github.com/t0mg/wordclock/releases) that can be flashed on your ESP32 with [esptool.py](https://docs.espressif.com/projects/esptool/en/latest/esp32/esptool/flashing-firmware.html).
+If you are not interested in modifying the source code, you can find prebuilt binaries [here](https://github.com/t0mg/wordclock/releases) that can be flashed on your ESP32 with [esptool.py](https://docs.espressif.com/projects/esptool/en/latest/esp32/esptool/flashing-firmware.html) or even directly from Chrome browser with [esptool-js](https://espressif.github.io/esptool-js/)
+
+Use the `firmware_esp32dev` files if you have a custom built clock based on the ESP32 Dev board, or the `firmware_nodo` files if you purchased a [nodo clock kit](https://www.nodo-shop.nl/en/52-wordclock) (which is powered by an ESP32-C3 chip and has the LEDs laid out in a different order).
+
+### Flashing with esptool-js
+
+- Download the latest `merged.bin` firmware for your platform from the [release page](https://github.com/t0mg/wordclock/releases)
+- Open [esptool-js](https://espressif.github.io/esptool-js/)
+- Connect your ESP32 over USB
+- Click "Connect" and select the correct COM port
+- Click "Erase Flash" and let it do its thing
+- Set Flash Address to 0
+- Pick the file you downloaded
+- Click "Program" and wait for the operation to complete
+- Profit
 
 ## Build with PlatformIO
 
@@ -31,15 +45,17 @@ This is the recommended method as it makes it easy to manage dependencies and bu
 3. Verify that the target board in `platformio.ini` matches your ESP32 hardware
 4. Build and upload
 
+**Important**: Platform IO builds and flashes multiple bin files (bootloader, partition, firmware). To merge those into a single binary for flashing separately from e.g. esptool or the OTA updater, run `pio run -t mergebin` from a PlatformIO console and look for the file ending with "merged.bin" in the `.pio/build` folder.
+
 ## OTA update
 
-After the firwmare has been flashed over USB once, you can use the OTA feature to flash further updates: build the new binary file, then open the web portal of your clock, click the `Firmware update` link at the bottom and upload the new `.bin` file.
+After the firwmare has been flashed over USB once, you can use the OTA feature to flash further updates: build the new binary file, then open the web portal of your clock, click the `Firmware update` link at the bottom and upload the new `firmware.bin` file. For OTA we don't use the "merged" version mentioned in the previous section.
 
 - Pre-built releases can be found [here](https://github.com/t0mg/wordclock/releases).
 - In PatformIO, the build file is located in `.pio\build\<environment name>\firmware.bin`.
 - If you are building with Arduino IDE, use `Sketch > Export compiled Binary` to export the file.
 
-__Warning__: if the `firmware config version` displayed at the very bottom of the web interface changes, your settings will be reset. They should othewise remain.
+__Warning__: if the `firmware config version` displayed at the very bottom of the web interface changes, your settings will be reset. They should otherwise remain.
 
 ## [Deprecated] Build with Arduino IDE
 

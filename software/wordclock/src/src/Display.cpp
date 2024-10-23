@@ -13,25 +13,29 @@ Display::Display(ClockFace* clockFace, uint8_t pin)
 
 void Display::setup()
 {
+  _mode = CLOCK;
   _pixels.Begin();
   _brightnessController.setup();
 }
 
 void Display::loop()
 {
+  if (_mode == TICKER) {
+    return;
+  }
   if (_bootAnimations.IsAnimating()) {
     _bootAnimations.UpdateAnimations();
-  } else if (_matrix_mode) {
-      if (_matrix_buf.size() >= 110) {
+  } else if (_mode == MATRIX) {
+      if (_matrix_buf.size() >= NEOPIXEL_COLUMNS * NEOPIXEL_ROWS) {
         _pixels.SetPixelColor(_clockFace->mapMinute(ClockFace::TopLeft), black);
         _pixels.SetPixelColor(_clockFace->mapMinute(ClockFace::TopRight), black); 
         _pixels.SetPixelColor(_clockFace->mapMinute(ClockFace::BottomLeft), black); 
         _pixels.SetPixelColor(_clockFace->mapMinute(ClockFace::BottomRight), black);  
         DLOGLN("Updating matrix from arbitray color vector");
         uint16_t indexPixel = 0;
-        for (int j = 0; j < 10; j++) {
+        for (int j = 0; j < NEOPIXEL_ROWS; j++) {
           {
-          for (int i = 0; i < 11; i++)
+          for (int i = 0; i < NEOPIXEL_COLUMNS; i++)
             {
               if (_matrix_buf.size() >= indexPixel) {
                 _pixels.SetPixelColor(_clockFace->map(i, j), _matrix_buf[indexPixel]);
@@ -106,8 +110,7 @@ void Display::_update(int animationSpeed)
 
 void Display::updateForTime(int hour, int minute, int second, int animationSpeed)
 {
-
-  if (_bootAnimations.IsAnimating() || !_clockFace->stateForTime(hour, minute, second, _show_ampm))
+  if (_mode != CLOCK || !_clockFace->stateForTime(hour, minute, second, _show_ampm))
   {
     return; // Nothing to update.
   }
@@ -199,7 +202,8 @@ void Display::_fadeAnimUpdate(const AnimationParam& param)
       else 
       {
         DLOGLN("Boot animation complete");
-        _update(200);
+        _mode = CLOCK;
+        _update(100);
       }
     }
 }
@@ -207,6 +211,7 @@ void Display::_fadeAnimUpdate(const AnimationParam& param)
 void Display::runBootAnimation()
 {
     DLOGLN("Starting boot animation");
+    _mode = BOOT;
     DLOGLN("Testing red");
     _circleCenterX = 5;
     _circleCenterY = 10;
@@ -215,13 +220,88 @@ void Display::runBootAnimation()
     _bootAnimations.StartAnimation(1, 3000,[this](const AnimationParam& param) { _circleAnimUpdate(param);});
 }
 
-void Display::setMatrix(std::vector<RgbColor> colorValues) {
+void Display::setMatrix(std::vector<RgbColor> colorValues)
+{
   _animations.StopAll();
-  _matrix_mode = true;
+  _mode = MATRIX;
   _clockFace->clearDisplay();
   _matrix_buf = colorValues;
 }
 
-void Display::clearMatrix() {
-  _matrix_mode = false;
+void Display::clearMatrix()
+{
+  _mode = CLOCK;
+  _update(30);
+}
+
+void Display::_displayCharacter(FontTable fontTable, char character, int scrollPosition, RgbColor color) {
+  // Get bit array for this character
+  std::vector<bool> charData = FontTable::getCharData(fontTable, character);
+  // Iterate through each pixel of the character
+  if (charData.size() != fontTable.characterHeight * fontTable.characterWidth) {
+    return;
+  }
+  // Center vertically
+  static int offsetY = (NEOPIXEL_ROWS - fontTable.characterHeight) / 2;
+  for (int i = 0; i < fontTable.characterHeight; i++) {
+    for (int j = 0; j < fontTable.characterWidth; j++) {
+      int offsetX = scrollPosition + j;
+      // Only account for on-screen pixels
+      if (offsetX < NEOPIXEL_COLUMNS && offsetX >= 0) {
+        _pixels.SetPixelColor(_clockFace->map(offsetX, offsetY + i), charData[i * fontTable.characterWidth + j] ? color : black);
+      } 
+    }
+  }
+}
+
+void Display::scrollText(IotWebConf &iwc, String text, RgbColor textColor, int speed, bool rightToLeft)
+{
+  DLOGLN("Ticker activated");
+  DLOGLN(text);
+
+  const FontTable fontTable = font5x7;  
+  const int letterSpacing = 1;
+  int textLength = text.length();
+  int scrollSpeed = std::min(10000, std::max(10, speed));
+  int scrollDirection = rightToLeft ? 1 : -1;
+
+  if (fontTable.characterHeight > NEOPIXEL_ROWS) {
+    DLOGLN("Font is too tall to fit the display");
+    return;
+  }
+
+  _animations.StopAll();
+  _mode = TICKER;
+
+  // Calculate total scrolling distance
+  const int letterWidth = fontTable.characterWidth + letterSpacing;
+  const int totalScrollDistance = letterWidth * textLength + NEOPIXEL_COLUMNS;
+
+  // Starting position
+  int scrollPosition = scrollDirection == 1 ? NEOPIXEL_COLUMNS - totalScrollDistance : NEOPIXEL_COLUMNS;
+
+  // Iterate through each pixel of the scrolling text
+  for (int i = 0; i <= totalScrollDistance; i++) {
+    _pixels.ClearTo(black);
+
+    for (int j = 0; j < textLength; j++) {
+      int charPos = scrollPosition + j * letterWidth;
+      if (charPos >= -fontTable.characterWidth && charPos < NEOPIXEL_COLUMNS) {
+      _displayCharacter(fontTable, text.charAt(j), charPos, textColor);
+      }
+    }
+
+    // Update the matrix
+    _pixels.Show();
+
+    // Update scroll position
+    scrollPosition += scrollDirection;
+
+    // Delay between frames
+    iwc.delay(scrollSpeed);
+  }
+
+  _mode = CLOCK;
+  DLOGLN("Ticker exited");
+  _update();
 }

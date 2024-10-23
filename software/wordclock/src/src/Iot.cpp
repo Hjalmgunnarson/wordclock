@@ -10,6 +10,8 @@
 #include <uri/UriBraces.h>
 #include <MQTT.h>
 #include <esp_sntp.h>
+#include <string>
+#include <ArduinoJson.h>
 
 // Name of this IoT object.
 #define THING_NAME "WordClock"
@@ -30,6 +32,12 @@
 #define NTP_SERVER "pool.ntp.org"
 // LDR MQTT topic publish interval in ms.
 #define MQTT_LDR_PUBLISH_INTERVAL 15000
+// Max accepted lenghth of text to scroll.
+#define TICKER_MAX_LENGTH 200
+// Versioning pulled from git by versioning.py script.
+#ifndef AUTO_VERSION
+#define AUTO_VERSION "Unknown"
+#endif
 
 namespace
 {
@@ -53,7 +61,7 @@ namespace
   extern const uint8_t style_css_end[] asm("_binary_src_style_css_end");
 
   // Custom HTML element will be added at the beginning of the body element.
-  const char CUSTOMHTML_BODY_INNER[] PROGMEM = "<header><div class=\"logoContainer\"><img class=\"logo\" src=\"logo.svg\"/></div></header>\n";
+  const char CUSTOMHTML_BODY_INNER[] PROGMEM = "<header><div class=\"logoContainer\"><img class=\"logo\" src=\"logo.svg\"/></div></header><aside>Firmware version " AUTO_VERSION "</aside>\n";
 
   class CustomHtmlFormatProvider : public iotwebconf::HtmlFormatProvider
   {
@@ -147,9 +155,9 @@ namespace
     if (result != 3 || parsed_hour > 23 || parsed_minute > 59 ||
         parsed_second > 59)
     {
-      Serial.print("[INFO] Could not parse time value \"");
-      Serial.print(str);
-      Serial.println("\".");
+      DLOG("[INFO] Could not parse time value \"");
+      DLOG(str);
+      DLOGLN("\".");
       return false;
     }
 
@@ -166,7 +174,7 @@ Iot::Iot(Display *display, RTC_DS3231 *rtc)
 
       display_group_("display_group", "Display"),
       boot_animation_param_(
-          "Startup animation", "boot_animation_enabled", boot_animation_enabled_value_,
+          "Show boot animation & IP address upon connection", "boot_animation_enabled", boot_animation_enabled_value_,
           IOT_CONFIG_VALUE_LENGTH, "1", 0, 1, 1, "style='width: 40px;' data-labels='Off|On'"),
       clockface_language_param_(
           "Clock face language", "clockface_language", clockface_language_value_, IOT_CONFIG_VALUE_LENGTH,
@@ -218,6 +226,7 @@ Iot::Iot(Display *display, RTC_DS3231 *rtc)
   this->mqtt_server_value_[0] = '\0';
   this->mqtt_user_value_[0] = '\0';
   this->mqtt_password_value_[0] = '\0';
+
 }
 
 Iot::~Iot() {}
@@ -264,7 +273,12 @@ void Iot::updateClockFromParams_()
       parseColorValue(color_value_, RgbColor(255, 255, 255)));
   display_->setShowAmPm(parseBooleanValue(show_ampm_value_));
   display_->setSensorSentivity(parseNumberValue(ldr_sensitivity_value_, 0, 10, 5));
+  
+  updateClockRTCFromParams_();
+}
 
+void Iot::updateClockRTCFromParams_()
+{
   if (parseBooleanValue(ntp_enabled_value_))
   {
     maybeSetRTCfromNTP_();
@@ -344,41 +358,84 @@ void Iot::setup()
   web_server_.on("/", [this]  { handleHttpToRoot_(); });
   web_server_.onNotFound([this] { iot_web_conf_.handleNotFound(); });
   web_server_.on("/logo.svg", [this]() {
-    web_server_.send(200, "image/svg+xml", (char *)logo_svg_start);
+    web_server_.send(HTTP_OK, "image/svg+xml", (char *)logo_svg_start);
   });
 
+  web_server_.on(UriBraces("/api/text/{}"), [this]() {
+    if (checkAPIEnabledOr403_()) {
+      RgbColor textColor = web_server_.arg("color") != nullptr ? Palette::stringToRgb(web_server_.arg("color").substring(0,1), display_->getColor()).at(0) : display_->getColor();
+      int scrollSpeed =  web_server_.arg("delay") != nullptr ? web_server_.arg("delay").toInt() : 150;
+      bool rtl = web_server_.arg("rtl") != nullptr;
+      String payload = web_server_.urlDecode(web_server_.pathArg(0));
+      if (display_->getMode() == Display::Mode::TICKER)
+      {
+        web_server_.send(503, "text/plain", "Error: already displaying text. Retry later.");
+        return;
+      }
+      if (payload.length() >= TICKER_MAX_LENGTH)
+      {
+        web_server_.send(400, "text/plain", "Error: the text paylod cannot exceed 200 characters");
+        return;
+      }
+      web_server_.send(HTTP_OK, "text/plain", "OK");
+      scrollText_(payload, textColor, scrollSpeed, rtl);
+    }
+  });
   web_server_.on(UriBraces("/api/matrix/set/{}"), [this]() {
-    if (parseBooleanValue(api_enabled_value_)) {    
+    if (checkAPIEnabledOr403_()) {    
       String payload = web_server_.pathArg(0);
       setMatrixFromPayload_(payload);
-      web_server_.send(200, "text/plain", "OK");
-    } else {
-      web_server_.send(403, "text/plain", "API not enabled");
+      web_server_.send(HTTP_OK, "text/plain", "OK");
     }
   });
   web_server_.on("/api/matrix/unset", [this]() {
-    if (parseBooleanValue(api_enabled_value_)) {    
+    if (checkAPIEnabledOr403_()) {   
+      DateTime now = rtc_->now();
       display_->clearMatrix();
-      web_server_.send(200, "text/plain", "OK");
-    } else {
-      web_server_.send(403, "text/plain", "API not enabled");
+      web_server_.send(HTTP_OK, "text/plain", "OK");
     }
   });
   web_server_.on("/api/color/get", [this]() {
-    if (parseBooleanValue(api_enabled_value_)) {
+    if (checkAPIEnabledOr403_()) {
       char hexColor[10];
       HtmlColor(display_->getColor()).ToNumericalString(hexColor, 9);    
-      web_server_.send(200, "text/plain", hexColor);
-    } else {
-      web_server_.send(403, "text/plain", "API not enabled");
+      web_server_.send(HTTP_OK, "text/plain", hexColor);
     }
   });
   web_server_.on("/paint", [this]() {
-    if (parseBooleanValue(api_enabled_value_)) {    
-      web_server_.send(200, "text/html", (char *)paint_html_start);
-    } else {
-      web_server_.send(403, "text/plain", "API not enabled");
+    if (checkAPIEnabledOr403_()) {    
+      web_server_.send(HTTP_OK, "text/html", (char *)paint_html_start);
     }
+  });
+  web_server_.on("/wifilist", [this]() {
+    long s = millis();
+
+    int n = WiFi.scanComplete();
+    DLOG("Scan complete: ");
+    DLOGLN(n);
+    if (n  == -2 ) {
+      // not yet scanning.
+      WiFi.scanNetworks(true);
+      web_server_.send(202, "text/plain", (char *)"");
+      DLOGLN("Scan started\n");
+    } else if ( n == -1 ) {
+      // still scanning.
+      web_server_.send(202, "text/plain", (char *)"");
+    } else {
+      if (n == 0) {
+        web_server_.send(HTTP_OK, "text/plain", (char *)"");
+      } else {
+        String str = "";
+        for (int i = 0; i < n; ++i) {
+          // Print SSID and RSSI for each network found
+          str += WiFi.SSID(i) + "\n";
+        }
+        web_server_.send(HTTP_OK, "text/plain", (char *)str.c_str());
+      }
+      WiFi.scanDelete();
+    }
+    long e = millis();
+    DLOGLN(e - s);
   });
 
   if (parseBooleanValue(mqtt_enabled_value_))
@@ -405,7 +462,7 @@ void Iot::setup()
 void Iot::loop()
 {
   DCHECK(initialized_, "[ERROR] Iot not initialized, loop aborted.");
-  if (initialized_)
+  if (initialized_ && display_->getMode() != Display::Mode::BOOT)
   {
     iot_web_conf_.doLoop();
 
@@ -564,10 +621,12 @@ void Iot::handleConfigSaved_()
   DLOGLN("Configuration was updated.");
   if (parseBooleanValue(mqtt_enabled_value_))
   {
+    updateClockRTCFromParams_();
     needs_reboot_ = true;
   }
   else
   {
+    firstWifiConnection_ = true;
     updateClockFromParams_();
   }
 }
@@ -575,11 +634,16 @@ void Iot::handleConfigSaved_()
 void Iot::handleWifiConnection_()
 {
   DLOGLN("Wifi connected.");
+  if (parseBooleanValue(boot_animation_enabled_value_) && firstWifiConnection_)
+  {
+    scrollText_("WiFi: " + WiFi.SSID() + " IP: " + WiFi.localIP().toString(), display_->getColor(), 150, false);
+  }
   if (parseBooleanValue(mqtt_enabled_value_))
   {
     needs_mqtt_connect_ = true;
   }
   maybeSetRTCfromNTP_();
+  firstWifiConnection_ = false;
 }
 
 bool Iot::connectMQTT_()
@@ -602,6 +666,7 @@ bool Iot::connectMQTT_()
   mqtt_client_.subscribe(mqtt_topic_prefix_ + "/light/switch/set");
   mqtt_client_.subscribe(mqtt_topic_prefix_ + "/light/matrix/set");
   mqtt_client_.subscribe(mqtt_topic_prefix_ + "/light/matrix/unset");
+  mqtt_client_.subscribe(mqtt_topic_prefix_ + "/light/text/set");
 
   // Update availability.
   mqtt_client_.publish(mqtt_topic_prefix_ + "/availability", "online", true /* retained */, 0 /* QoS */);
@@ -683,6 +748,42 @@ void Iot::mqttMessageReceived_(String &topic, String &payload)
   {
     display_->clearMatrix();
   }
+  else if (topic == mqtt_topic_prefix_ + "/light/text/set")
+  {
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, payload);
+    if (error) {
+      DLOG("deserializeJson() failed: ");
+      DLOGLN(error.f_str());
+      return;
+    }
+    const char *text = doc["text"];
+    if (text == nullptr) {
+      DLOGLN("no text in payload");
+      return;
+    }
+    const char *color = doc["color"];
+    RgbColor col = display_->getColor();
+    if (color != nullptr) {
+      col = Palette::stringToRgb(String(color), display_->getColor()).at(0);
+    }
+    int speed = doc["delay"];
+    if (speed == 0) {
+      speed = 200;
+    }
+    bool rtl = doc["rtl"].as<int>() == 1;
+    String s = text;
+    scrollText_(s, col, speed, rtl);
+  }
+}
+
+bool Iot::checkAPIEnabledOr403_()
+{
+  if (parseBooleanValue(api_enabled_value_)) {
+    return true;
+  }  
+  web_server_.send(403, "text/plain", "API not enabled");
+  return false;
 }
 
 void Iot::toggleDisplay_(String payload)
@@ -709,5 +810,20 @@ void Iot::setMatrixFromPayload_(String &payload) {
   } else {
     DLOG("Matrix payload is too short :");
     DLOGLN(payload.length());
+  }
+}
+
+void Iot::scrollText_(String &text, RgbColor color, int speed, bool rightToLeft) {
+  if (display_->getMode() == Display::Mode::TICKER)
+  {
+    DLOGLN("Ticker already active, cancelling.");
+    return;
+    // TODO: queue up requests instead of dropping them ?
+  }
+  if (text.length() > 0 && text.length() <= TICKER_MAX_LENGTH) {
+    display_->scrollText(iot_web_conf_, text, color, speed, rightToLeft);
+  } else {
+    DLOG("Text length out of bounds");
+    DLOGLN(text.length());
   }
 }

@@ -36,12 +36,16 @@ private:
   void clearTransientParams_();
   // Updates word clock's state to match the current configuration values.
   void updateClockFromParams_();
+  // Updates the RTC based on current configuration
+  void updateClockRTCFromParams_();
   // Checks for NTP setting and if enabled, attempts to update the RTC.
   void maybeSetRTCfromNTP_();
   // Sets the RTC from manual input
   void setRTCfromConfig_();
   // Connects to MQTT server.
   bool connectMQTT_();
+  // Sends a 403 on the web server if the API is not enabled.
+  bool checkAPIEnabledOr403_();
   // Toggles the display if payload is "ON" or "OFF".
   void toggleDisplay_(String payload);
   // Convenience method to format RgbColor for MQTT publication.
@@ -60,12 +64,16 @@ private:
   void handleConfigSaved_();
   // Handles wifi connexion success.
   void handleWifiConnection_();
+  // Keep track of he first wifi connection callback.
+  bool firstWifiConnection_ = true;
   // Connects to MQTT server using provided credentials.
   bool connectMqttOptions_();
   // Handles incoming MQTT messages.
   void mqttMessageReceived_(String &topic, String &payload);
   // Updates the display with an arbitrary payload.
   void setMatrixFromPayload_(String &payload);
+  // Scrolls an arbirary text payload on the display.
+  void scrollText_(String &text, RgbColor color, int speed, bool rightToLeft);
 
   // Whether IoT configuration was initialized.
   bool initialized_ = false;
